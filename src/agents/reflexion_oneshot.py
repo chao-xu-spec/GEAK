@@ -15,6 +15,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class Reflexion_Oneshot(Reflexion):
+    """
+    1. Given the instructions and contexts, the LLM generates candidate solutions.
+    2. The generated solutions are executed to produce results or, in case of failure, error messages.
+    3. If execution fails, the LLM analyzes the error trace and suggests a fix.
+    4. The process repeats, with the LLM generating improved solutions based on previous feedback.
+    """
 
     def __init__(self, model: BaseModel, dataset, corpus_path, mem_file=None):
         self.model = model
@@ -94,7 +100,10 @@ class Reflexion_Oneshot(Reflexion):
                         self.generate_solution(mem, temperature=temperature)
                         pbar.update(1)
             
-            # run scripts
+            """
+            Run the scripts to verify whether the generated kernels can execute without errors.
+            To check for correctness against expected outputs, use the test_opt_correctness method from TritonBench.
+            """
             logger.info(f"\nrun scripts on gpu")
             for mem in tqdm(self.memories[:data_len]):
                 if mem.pass_call:
@@ -102,6 +111,27 @@ class Reflexion_Oneshot(Reflexion):
                 is_pass, err_msg = self.dataset.run_single_call(mem.ps)
                 if not is_pass:
                     mem.err_msg = err_msg
+            """
+            To measure kernel latency, follow these steps:
+
+            self.dataset.write_perf_file(input_folder_path=exe_dir, results_path=perf_result_dir, tmp_dir=script_dir)
+            self.dataset.run_perf_scripts(gpu_id=gpu_id, script_dir=script_dir, log_dir=perf_log_dir)
+
+            for mem in self.memories[:data_len]:
+                path_gen = os.path.join(perf_result_dir, mem.ps.filename[:-3] + ".json")
+                if not os.path.exists(path_gen):
+                    continue
+                try:
+                    _, efficiency, ms = self.dataset.calculate(path_gen, path_ref=None)
+
+                    print(f"{mem.ps.filename}: {ms}")
+                    print(f"{mem.ps.filename}: {efficiency}\n")
+                    
+                    
+                except Exception as e:
+                    print(f"{mem.ps.filename} failed due to {e}")
+
+            """
 
             # generate reflections
             logger.info(f"\ngenerate reflections")
