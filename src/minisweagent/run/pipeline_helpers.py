@@ -419,9 +419,21 @@ def execute_harness_validation(
     """
     from minisweagent.run.preprocess.run_harness import results_errors, run_harness
 
-    env_overrides: dict[str, str] | None = None
-    if benchmark_extra_args:
-        env_overrides = {"GEAK_BENCHMARK_EXTRA_ARGS": benchmark_extra_args}
+    env_overrides: dict[str, str] = {}
+    # Keep validation fast: override iterations to a small number unless
+    # the caller explicitly provides benchmark_extra_args.
+    if not benchmark_extra_args:
+        env_overrides["GEAK_BENCHMARK_ITERATIONS"] = "5"
+    else:
+        env_overrides["GEAK_BENCHMARK_EXTRA_ARGS"] = benchmark_extra_args
+        # Extract --iterations N from extra_args and also set the env var
+        # so harnesses that read GEAK_BENCHMARK_ITERATIONS (instead of
+        # parsing --iterations from argv) get the right count.
+        import re as _re
+
+        _iter_match = _re.search(r"--iterations\s+(\d+)", benchmark_extra_args)
+        if _iter_match:
+            env_overrides["GEAK_BENCHMARK_ITERATIONS"] = _iter_match.group(1)
 
     results = run_harness(
         harness_path,
@@ -472,7 +484,7 @@ def create_validated_harness(
     RuntimeError
         If validation still fails after all retries.
     """
-    from minisweagent.agents.unit_test_agent import run_unit_test_agent
+    from minisweagent.run.preprocess.unit_test_agent import run_unit_test_agent
 
     max_attempts = max_retries + 1
     harness_errors: list[str] = []
