@@ -47,7 +47,7 @@ class AgentConfig:
     patch_output_dir: str | None = None
     metric: str | None = None
     # Strategy manager configuration
-    use_strategy_manager: bool = False
+    use_strategy_manager: bool = True
     tool_profile: str = "full"
     """``ToolRuntime`` profile: ``\"full\"`` or ``\"swe\"`` (see ``tools_runtime``)."""
     strategy_file_path: str = ".optimization_strategies.md"

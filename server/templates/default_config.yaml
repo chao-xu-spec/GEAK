@@ -1,5 +1,5 @@
 agent:
-  step_limit: 150
+  step_limit: 0.
   cost_limit: 0.
   mode: confirm
   use_skills: true
@@ -26,5 +26,6 @@ model:
     text:
       verbosity: low
 tools:
-  profiling: false
+  profile_kernel: true
   profiling_type: profiling
+  rag: false

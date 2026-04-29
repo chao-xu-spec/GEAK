@@ -2,7 +2,7 @@ agent:
   step_limit: 0.
   cost_limit: 0.
   mode: confirm
-  use_skills: False
+  use_skills: true
 env:
   env:
     PAGER: cat
@@ -26,6 +26,6 @@ model:
     text:
       verbosity: low
 tools:
-  profile_kernel: false
+  profile_kernel: true
   profiling_type: profiling
   rag: false
