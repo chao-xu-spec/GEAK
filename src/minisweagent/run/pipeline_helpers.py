@@ -146,7 +146,6 @@ def _ensure_mcp_importable() -> None:
     """Add MCP tool source directories to sys.path if not already present."""
     for sub in (
         "mcp_tools/profiler-mcp/src",
-        "mcp_tools/metrix-mcp/src",
         "mcp_tools/automated-test-discovery/src",
     ):
         p = str(_REPO_ROOT / sub)
@@ -910,6 +909,6 @@ def run_baseline_profile(test_command: str, gpu_id: int = 0) -> dict:
         command=profile_cmd,
         backend="metrix",
         num_replays=3,
-        quick=True,
+        quick=False,
         gpu_devices=str(gpu_id),
     )

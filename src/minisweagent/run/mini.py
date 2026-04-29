@@ -203,11 +203,9 @@ def main(
 
     tools_cfg = config.get("tools") or {}
     disabled_tools: list[str] = []
-    if tools_cfg.get("bash") is False:
-        disabled_tools.append("bash")
-    if tools_cfg.get("profiling") is False:
-        disabled_tools.append("profiling")
-        disabled_tools.append("profile_kernel")
+    for tool_name, enabled in tools_cfg.items():
+        if enabled is False:
+            disabled_tools.append(tool_name)
 
     # RAG MCP toggle: disable RAG tools when rag is not enabled
     rag_enabled = tools_cfg.get("rag", False)
@@ -232,9 +230,8 @@ def main(
             logger.info("rag-mcp installed successfully.")
             # Refresh sys.path so the newly installed package is discoverable
             import importlib
-            import site
+            sys.path.insert(0, str(_rag_mcp_path / "src"))
             importlib.invalidate_caches()
-            site.main()
             import rag_mcp  # noqa: F401
         # Auto-build semantic index if missing
         _index_path = Path.home() / ".cache" / "amd-ai-devtool" / "semantic-index"
