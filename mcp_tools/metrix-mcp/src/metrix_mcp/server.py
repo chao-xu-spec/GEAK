@@ -128,7 +128,7 @@ def _profile_kernel_impl(
 
 
 @mcp.tool()
-def profile_kernel(
+def metrix_kernel(
     command: str,
     num_replays: int = 3,
     kernel_filter: str | None = None,

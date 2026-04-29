@@ -7,7 +7,7 @@ from minisweagent.tools.bash_command import BashCommand
 from minisweagent.tools.save_and_test import SaveAndTestTool
 from minisweagent.tools.str_replace_editor import str_replace_editor
 from minisweagent.tools.strategy_manager import StrategyManagerTool
-from minisweagent.tools.submit import SubmitTool
+from minisweagent.tools.submit import SubmitTool, Submitted
 
 json_path = Path(__file__).parent / "tools.json"
 with open(json_path, encoding="utf-8") as f:
@@ -277,4 +277,14 @@ class ToolRuntime:
         if name == "bash" and "command" not in args:
             args = {**args, "command": ""}
 
-        return self._tool_table[name](**args)
+        try:
+            return self._tool_table[name](**args)
+        except Submitted:
+            # Task-completion signal; must propagate to DefaultAgent.parse_action.
+            raise
+        except Exception as exc:
+            logger.exception("Tool %r dispatch failed", name)
+            return {
+                "output": f"Tool execution error ({type(exc).__name__}): {exc}",
+                "returncode": 1,
+            }

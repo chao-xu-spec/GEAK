@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from minisweagent.tools.submit import Submitted
 from minisweagent.tools.tools_runtime import ToolRuntime
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,25 @@ class TestDispatch:
         rt = ToolRuntime()
         with pytest.raises(ValueError, match="Unknown tool"):
             rt.dispatch({"name": "nonexistent_tool_xyz", "arguments": {}})
+
+    def test_dispatch_submit_raises_submitted(self):
+        """Submit tool must raise Submitted so the agent can terminate normally."""
+        rt = ToolRuntime()
+        with pytest.raises(Submitted):
+            rt.dispatch({"name": "submit", "arguments": {"summary": "done"}})
+
+    def test_dispatch_tool_exception_returns_structured_error(self):
+        """Unexpected tool errors become {output, returncode: 1} instead of crashing."""
+
+        def boom(**kwargs):
+            raise RuntimeError("simulated tool failure")
+
+        rt = ToolRuntime()
+        rt._tool_table["bash"] = boom
+        result = rt.dispatch({"name": "bash", "arguments": {"command": "echo x"}})
+        assert result["returncode"] == 1
+        assert "RuntimeError" in result["output"]
+        assert "simulated tool failure" in result["output"]
 
     def test_dispatch_baseline_metrics_bad_json(self):
         """baseline_metrics with bad JSON should return error, not crash."""
