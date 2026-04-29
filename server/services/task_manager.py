@@ -109,15 +109,24 @@ Provide the optimized code with comments explaining the changes made.
 """
     
     def _get_default_config(self) -> dict:
-        """Get default agent configuration from template file."""
+        """Get default agent configuration.
+
+        Prefer minisweagent's packaged ``geak.yaml`` (same defaults as CLI GEAK).
+        If that path is missing (e.g. server-only deploy), fall back to
+        ``server/templates/default_config.yaml``, then a minimal inline dict.
+        """
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        geak_yaml = repo_root / "src" / "minisweagent" / "config" / "geak.yaml"
         template_path = Path(__file__).parent.parent / "templates" / "default_config.yaml"
-        
-        if template_path.exists():
-            with open(template_path, 'r') as f:
-                config = yaml.safe_load(f)
-            return config
-        
-        # Fallback minimal config if template not found
+
+        for path in (geak_yaml, template_path):
+            if path.exists():
+                with open(path, encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+                if isinstance(config, dict):
+                    return config
+
+        # Fallback minimal config if no template files found
         return {
             "model": {
                 "model_class": "amd_llm",
