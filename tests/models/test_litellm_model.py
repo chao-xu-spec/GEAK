@@ -9,8 +9,49 @@ from minisweagent.models.litellm_model import (
     _first_function_tool_call,
     _openai_tool_call_to_api_shape,
     convert_openai_tools_to_litellm,
+    convert_tools_to_openai_chat,
     normalize_messages_for_litellm_api,
 )
+
+# ---------------------------------------------------------------------------
+# convert_tools_to_openai_chat
+# ---------------------------------------------------------------------------
+
+
+class TestConvertToolsToOpenaiChat:
+    TOOLS = [
+        {
+            "function": {
+                "name": "bash",
+                "description": "Run a bash command",
+                "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]},
+            }
+        },
+        {
+            "function": {
+                "name": "submit",
+                "description": "Submit answer",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            }
+        },
+    ]
+
+    def test_basic_shape(self):
+        result = convert_tools_to_openai_chat(self.TOOLS)
+        assert len(result) == 2
+        assert result[0]["type"] == "function"
+        assert result[0]["function"]["name"] == "bash"
+        assert result[1]["function"]["name"] == "submit"
+        assert "cache_control" not in result[-1]
+
+    def test_cache_control_on_last_tool(self):
+        result = convert_tools_to_openai_chat(self.TOOLS, tool_cache_control=True)
+        assert result[-1]["cache_control"] == {"type": "ephemeral"}
+        assert "cache_control" not in result[0]
+
+    def test_empty_tools_with_cache_flag(self):
+        assert convert_tools_to_openai_chat([], tool_cache_control=True) == []
+
 
 # ---------------------------------------------------------------------------
 # convert_openai_tools_to_litellm

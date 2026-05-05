@@ -76,8 +76,18 @@ LITELLM_COMPLETION_PARAM_KEYS: frozenset[str] = frozenset(
 )
 
 
-def convert_tools_to_openai_chat(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Normalize tool definitions to OpenAI chat-completions ``tools`` format."""
+def convert_tools_to_openai_chat(
+    tools: list[dict[str, Any]],
+    *,
+    tool_cache_control: bool = False,
+) -> list[dict[str, Any]]:
+    """Normalize tool definitions to OpenAI chat-completions ``tools`` format.
+
+    When *tool_cache_control* is True, the last tool receives the same
+    Anthropic-style ``cache_control: {type: ephemeral}`` marker as
+    :func:`convert_openai_tools_to_litellm` / :func:`amd_claude.convert_openai_tools_to_claude`,
+    for AMD OpenAI-compatible gateways (e.g. Primus llm-proxy) that forward it downstream.
+    """
     converted: list[dict[str, Any]] = []
     for tool in tools:
         function = tool.get("function", tool)
@@ -101,6 +111,8 @@ def convert_tools_to_openai_chat(tools: list[dict[str, Any]]) -> list[dict[str, 
                 },
             }
         )
+    if tool_cache_control and converted:
+        converted[-1]["cache_control"] = CACHE_CONTROL_EPHEMERAL
     return converted
 
 
@@ -297,15 +309,6 @@ def _register_litellm_registry(path: Path | str | None) -> None:
         litellm.utils.register_model(json.loads(p.read_text(encoding="utf-8")))
 
 
-def _filter_default_tools(
-    tools: list[dict[str, Any]],
-    *,
-    profiling: bool,
-    bash_tool: bool,
-) -> list[dict[str, Any]]:
-    return filter_tools_for_amd_config(tools, profiling=profiling, bash_tool=bash_tool)
-
-
 def _gateway_url_text_for_amd_detection(config: LitellmModelConfig) -> str:
     """Join configured base URLs for substring checks (AMD Primus / OpenAI gateway)."""
     mk = config.model_kwargs or {}
@@ -427,7 +430,10 @@ class LitellmModel:
     def _query(self, messages: list[dict[str, Any]], **kwargs: Any) -> Any:
         filtered = _merge_completion_kwargs(self.config, kwargs)
         if use_amd_openai_compatible_litellm_route(self.config):
-            filtered["tools"] = convert_tools_to_openai_chat(self.tools)
+            filtered["tools"] = convert_tools_to_openai_chat(
+                self.tools,
+                tool_cache_control=self.config.tool_cache_control,
+            )
             filtered.setdefault("tool_choice", "auto")
         else:
             filtered["tools"] = convert_openai_tools_to_litellm(
