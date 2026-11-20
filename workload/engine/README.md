@@ -15,6 +15,7 @@ The [sequential driver](core/README.md) is an optional executor with a narrower 
 | `campaign/scheduler.py` | Optimize: task queue, declared GPU widths and worker recovery | Kernel campaign; Docker isolation or local CPU smoke |
 | `campaign/worker.sh` | Scheduler: attempts, credit, KEEP/revert and measurement hooks | Qualified kernel task protocol |
 | `campaign/container_runtime.py` | Scheduler: configured runtime preparation and container arguments | Docker |
+| `campaign/gpu_idle.py` | Scheduler/worker: is another tenant using these GPUs (driver busy/VRAM counters) | sysfs `/sys/class/drm` |
 | `campaign/durable_write.py` | Scheduler/worker: atomic state writes and credit recovery | File-based state |
 | `campaign/source_tree.py` | Worker/Verify: editable-source and frozen-harness snapshots | Declared kernel task layout |
 | `campaign/run_task_entry.py` | Measurement/Verify/UT: native test entry and receipts | Python kernel tasks |

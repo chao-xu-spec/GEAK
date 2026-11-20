@@ -68,6 +68,7 @@ note() { echo "[$(date '+%F %T')] $*" >> "$LOG/worker.log"; }
 
 [ -d "$TASK_DIR/kernel_src" ] || { note "FATAL no kernel_src/ under $TASK_DIR"; exit 2; }
 SOURCE_TREE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/source_tree.py"
+GPU_IDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gpu_idle.py"
 RETAIN_MEASUREMENT="$(dirname "$SOURCE_TREE")/../evidence/retain_measurement.py"
 STATE_IO="$(dirname "$SOURCE_TREE")/durable_write.py"
 
@@ -353,6 +354,25 @@ ${RESERVE}s measurement -- an unscored candidate is worth nothing"
   # even when that extends past TARGET. It never pads credit by sleeping until TARGET.
   CAP=$(( AGENT_REMAIN < ATTEMPT_CAP ? AGENT_REMAIN : ATTEMPT_CAP ))
   [ "$CAP" -lt "$ATTEMPT_MIN" ] && CAP="$ATTEMPT_MIN"
+  # Another tenant on this GPU makes every measurement of the attempt meaningless, so do not
+  # start one. Wait for the GPU to clear for GEAK_GPU_IDLE_WAIT seconds (default 900), then stop
+  # with the task blocked and the reason in worker.log instead of scoring a contaminated card.
+  # The scheduler passes the slot's physical ids; without them (a hand-run worker) nothing is
+  # checked, and GEAK_GPU_REQUIRE_IDLE=0 turns the check off.
+  if [ -n "${GEAK_PHYSICAL_GPUS:-}" ]; then
+    WAITED=0
+    FOREIGN="$(python3 "$GPU_IDLE" "$GEAK_PHYSICAL_GPUS" || true)"
+    while [ -n "$FOREIGN" ]; do
+      [ "$WAITED" = 0 ] && note "attempt $N: another tenant is using GPU(s) $GEAK_PHYSICAL_GPUS ($FOREIGN); waiting for it to clear"
+      if [ "$WAITED" -ge "${GEAK_GPU_IDLE_WAIT:-900}" ]; then
+        note "FATAL attempt $N: GPU(s) $GEAK_PHYSICAL_GPUS are still in use by another tenant after ${WAITED}s ($FOREIGN); refusing to measure on them"
+        write_status blocked "$CRED" "$BEST" "$DONE_ATTEMPTS" || exit 78
+        exit 78
+      fi
+      sleep 30; WAITED=$(( WAITED + 30 ))
+      FOREIGN="$(python3 "$GPU_IDLE" "$GEAK_PHYSICAL_GPUS" || true)"
+    done
+  fi
   EVAL_DIR="$RUN/attempt_$N"
   mkdir -p "$EVAL_DIR"
   SNAP="$RUN/snapshots/before_attempt_$N"

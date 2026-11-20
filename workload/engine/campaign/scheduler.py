@@ -38,6 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.join(HERE, "worker.sh")
 sys.path.insert(0, HERE)
 from durable_write import read_credit_pair
+import gpu_idle
 
 
 def parse_overrides(spec):
@@ -579,14 +580,32 @@ def tick(args, backend, tasks, assign, bad):
         if not free:
             break
         width = args.width[kernel]
-        gpus = allocate(free, width)
+        gpus = None
+        while free:
+            gpus = allocate(free, width)
+            if gpus is None:
+                # Not a failure: a wider task waits for its ranks to come free while
+                # narrower ones keep the machine busy.
+                break
+            # A GPU another tenant is using cannot give this task a measurement worth
+            # keeping. Leave it out of this tick, try the next group, and look again next tick.
+            foreign = [] if getattr(args, "allow_busy_gpus", False) else gpu_idle.foreign_use(gpus)
+            if not foreign:
+                break
+            reason, label = gpu_idle.describe(foreign), slot_label(gpus)
+            logged = args.__dict__.setdefault("contended_logged", {})
+            if logged.get(label) != reason:
+                log(args.work_root, "not dispatching %s to %s: %s" % (kernel, label, reason))
+                logged[label] = reason
+            free = [g for g in free if g not in gpus]
+            gpus = None
         if gpus is None:
-            # Not a failure: a wider task waits for its ranks to come free while
-            # narrower ones keep the machine busy.
             continue
         label = slot_label(gpus)
+        args.__dict__.setdefault("contended_logged", {}).pop(label, None)
         env = dict(args.worker_env)
         env["TASK_DIR"] = os.path.join(args.tasks_dir, kernel)
+        env["GEAK_PHYSICAL_GPUS"] = ",".join(str(g) for g in gpus)
         if kernel in args.keep_overrides:
             env["KEEP_THRESHOLD"] = str(args.keep_overrides[kernel])
         ok = backend.start(kernel, gpus, env)
@@ -657,6 +676,9 @@ def main():
     ap.add_argument("--target", type=int, default=172800)
     ap.add_argument("--require-full-budget", action="store_true",
                     help="keep the requested per-task budget and finish the final bounded attempt")
+    ap.add_argument("--allow-busy-gpus", action="store_true",
+                    help="dispatch to a GPU even when another tenant is using it (the check "
+                         "reads the driver's busy/VRAM counters, as gpu_lock.sh does)")
     ap.add_argument("--attempt-cap", type=int, default=1500)
     ap.add_argument("--measure-timeout", type=int, default=1800,
                     help="ceiling on the worker's own post-attempt measurement. This is "
