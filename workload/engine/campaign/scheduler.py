@@ -589,7 +589,7 @@ def tick(args, backend, tasks, assign, bad):
                 break
             # A GPU another tenant is using cannot give this task a measurement worth
             # keeping. Leave it out of this tick, try the next group, and look again next tick.
-            foreign = [] if getattr(args, "allow_busy_gpus", False) else gpu_idle.foreign_use(gpus)
+            foreign = [] if getattr(args, "allow_busy_gpus", False) else gpu_idle.foreign_use(gpus, render_paths=getattr(backend, "render_paths", None))
             if not foreign:
                 break
             reason, label = gpu_idle.describe(foreign), slot_label(gpus)
