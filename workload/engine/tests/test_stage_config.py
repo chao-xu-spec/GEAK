@@ -46,6 +46,28 @@ class SelectionTextTest(unittest.TestCase):
         self.assertEqual(stage.selection_problems(cfg_with("Top 5", top_k=None)), [])
 
 
+class FinalReportTest(unittest.TestCase):
+    def test_cmd_all_renders_the_report_once_more_after_the_last_stage(self):
+        cfg = {"order": ["baseline"], "run_root": "/tmp/does-not-matter"}
+        calls = []
+        with patch.object(stage, "load_state", return_value={}), \
+             patch.object(stage, "start_reporter", return_value=None), \
+             patch.object(stage, "stop_reporter"), \
+             patch.object(stage, "run_order", return_value=7), \
+             patch.object(stage, "render_final_report", side_effect=calls.append):
+            rc = stage.cmd_all(cfg, SimpleNamespace(stages=[]))
+        self.assertEqual(rc, 7)
+        self.assertEqual(calls, [cfg])
+
+    def test_render_uses_the_run_root_and_never_changes_the_return_code(self):
+        with tempfile.TemporaryDirectory() as root:
+            stage.render_final_report({"run_root": root})
+            self.assertTrue(Path(root, "REPORT.md").exists())
+        with patch.dict(sys.modules, {"report": SimpleNamespace(
+                main=lambda argv: (_ for _ in ()).throw(RuntimeError("boom")))}):
+            stage.render_final_report({"run_root": "/nonexistent"})      # must not raise
+
+
 class NamingTest(unittest.TestCase):
     cfg = {"target": {"model": "amd/Some-Model-FP4", "name_tokens": ["somemodel"]}}
 
