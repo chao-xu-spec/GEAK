@@ -23,6 +23,7 @@ Common arguments:
 """
 
 import argparse
+import re
 import hashlib
 import copy
 import json
@@ -137,7 +138,37 @@ def target_problems(cfg):
     for warning in warnings:
         print("WARNING %s" % warning, file=sys.stderr)
     return list(target.naming_problems(cfg, resolve_path(cfg["run_root"]),
-                                       cfg.get("_config_files") or [])) + errors
+                                       cfg.get("_config_files") or [])) + errors + \
+        selection_problems(cfg)
+
+
+def selection_problems(cfg):
+    """A profile selection described twice must say the same thing both times.
+
+    The profile slot enforces the numeric keys (selection_top_k, selection_overall_pct_gt);
+    the free-text `selection` is read by the agent and by people. One campaign wrote "Top 5
+    AND > 3%" while the inherited numbers were 10 and 0.5%: the run selected 15 targets
+    instead of 11 and the text described a scope nobody ran. Only numbers the text states
+    explicitly are compared; a text without numbers is left alone."""
+    params = (((cfg.get("stages") or {}).get("profile") or {}).get("params") or {})
+    text = params.get("selection")
+    if not isinstance(text, str):
+        return []
+    problems = []
+    top = re.search(r"top[\s-]*(\d+)", text, re.I)
+    pct = re.search(r">\s*=?\s*(\d+(?:\.\d+)?)\s*%", text)
+    if top and params.get("selection_top_k") is not None \
+            and int(top.group(1)) != int(params["selection_top_k"]):
+        problems.append("stages.profile.params.selection says top %s but selection_top_k is %s; "
+                        "the number is what runs. Make the text and the number agree."
+                        % (top.group(1), params["selection_top_k"]))
+    if pct and params.get("selection_overall_pct_gt") is not None \
+            and float(pct.group(1)) != float(params["selection_overall_pct_gt"]):
+        problems.append("stages.profile.params.selection says > %s%% but "
+                        "selection_overall_pct_gt is %s; the number is what runs. Make the "
+                        "text and the number agree." % (pct.group(1),
+                                                        params["selection_overall_pct_gt"]))
+    return problems
 
 
 def resolve_path(path):

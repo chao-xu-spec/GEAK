@@ -32,6 +32,20 @@ def cfg_with(selection, top_k=None, pct=None):
     return {"stages": {"profile": {"params": params}}}
 
 
+class SelectionTextTest(unittest.TestCase):
+    def test_text_that_contradicts_the_numbers_is_reported(self):
+        problems = stage.selection_problems(cfg_with("Top 5 AND > 3%", top_k=10, pct=0.5))
+        self.assertEqual(len(problems), 2)
+        self.assertIn("top 5 but selection_top_k is 10", problems[0])
+        self.assertIn("> 3% but selection_overall_pct_gt is 0.5", problems[1])
+
+    def test_text_that_agrees_or_states_no_numbers_is_left_alone(self):
+        self.assertEqual(stage.selection_problems(cfg_with("Top 10 AND > 0.5%", 10, 0.5)), [])
+        self.assertEqual(stage.selection_problems(cfg_with("every complete operator", 10, 0.5)), [])
+        self.assertEqual(stage.selection_problems({}), [])
+        self.assertEqual(stage.selection_problems(cfg_with("Top 5", top_k=None)), [])
+
+
 class NamingTest(unittest.TestCase):
     cfg = {"target": {"model": "amd/Some-Model-FP4", "name_tokens": ["somemodel"]}}
 
