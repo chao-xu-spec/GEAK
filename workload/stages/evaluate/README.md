@@ -22,6 +22,17 @@ Explicit scenario values remain overrides. This is a policy threshold, separate 
 kernel `keep_threshold` and measured repeat variability. When changing policy for an
 existing comparison, retain its receipts and old verdict and re-evaluate in a new `OUT`.
 
+Beside the verdict, `ab.json` and `REPORT.md` report what the comparison can and cannot show:
+the spread measured between the legs of one arm (`measured_noise_pct`) with a warning when the
+configured band is more than three times wider, which would report a repeatable change as
+`no_change`; for an applyback, each installed kernel's share of GPU time (from
+`roofline/out/roofline.json`, or `PARAMS.roofline`) and its Amdahl ceiling, with a note when the
+ceiling is below the band; and, when the legs' serving logs are found (`server_log`, else
+`server.log` beside the leg's receipt), the decode step time by batch size
+([decode_step.py](decode_step.py), sglang "Decode batch" lines). `PARAMS.max_decode_step_regression_pct`
+turns that table into a gate: a candidate whose median step at some batch size is slower than
+stock by more than that percentage is judged `regression` even inside the throughput band.
+
 The call writes `ab.json`, `REPORT.md` and `result.json`. Set `OUT`, `PARAMS`, `STAGE=evaluate`
 and `STAGE_SKILL=native-e2e` for a direct call. The standard applyback finalizer first
 checks kernel integration, then calls this same evaluator with that verified metadata;

@@ -15,11 +15,17 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "_shared"))
+sys.path.insert(0, HERE)
 from emit_result import emit, read_json  # noqa: E402
+import decode_step  # noqa: E402
 
 
 def pct(x):
     return "%+.4f%%" % x if isinstance(x, (int, float)) else "—"
+
+
+def pct_or_dash(v):
+    return "%.2f%%" % v if isinstance(v, (int, float)) and not isinstance(v, bool) else "—"
 
 
 def x_(v, nd=4):
@@ -53,6 +59,19 @@ def write_section(out, ab, summary):
               % summary.get("overlay_loaded_by_every_leg")]
     if summary.get("spread_pct") is not None:
         L.append("| spread between legs | %.4f%% |" % summary["spread_pct"])
+    if ab.get("measured_noise_pct") is not None:
+        L.append("| measured spread between like legs | %.2f%% |" % ab["measured_noise_pct"])
+    if ab.get("amdahl_ceiling_pct") is not None:
+        L.append("| Amdahl ceiling of the installed kernels | %+.2f%% |" % ab["amdahl_ceiling_pct"])
+    if ab.get("band_warning"):
+        L += ["", "> **Note:** " + ab["band_warning"] + "."]
+    if ab.get("decode_step_by_batch"):
+        L += ["", "| Decode batch | stock step (ms) | candidate step (ms) | candidate / stock |",
+              "| ---: | ---: | ---: | ---: |"]
+        L += ["| %d | %.3f | %.3f | %.4f |" % (r["batch"], r["stock_ms"], r["candidate_ms"], r["ratio"])
+              for r in ab["decode_step_by_batch"]]
+        L += ["", "Step time = running requests x accepted length / generation throughput, from the "
+                  "legs' serving logs (median per batch size)."]
 
     p90 = ab.get("native_interactivity_p90") or {}
     if p90.get("available") is True:
@@ -64,10 +83,12 @@ def write_section(out, ab, summary):
                   "conversion." % p90["metric_path"]]
 
     if "op_level" in ab:
-        L += ["", "| Kernel installed | Operator speedup | Target |", "| --- | --- | --- |"]
+        L += ["", "| Kernel installed | Operator speedup | GPU share | Amdahl ceiling | Target |",
+              "| --- | --- | --- | --- | --- |"]
         for op in ab.get("op_level") or []:
-            L.append("| `%s` | %s | `%s` |"
-                     % (op.get("kernel"), x_(op.get("op_speedup")), op.get("target")))
+            L.append("| `%s` | %s | %s | %s | `%s` |"
+                     % (op.get("kernel"), x_(op.get("op_speedup")), pct_or_dash(op.get("share_pct")),
+                        pct_or_dash(op.get("ceiling_pct")), op.get("target")))
         L += ["", "Operator speedup and serving delta are independent measurements. "
                   "A serving delta inside the noise band is reported as no_change."]
     try:
@@ -95,6 +116,69 @@ def arm_repeats(arm):
         return count
     legs = arm.get("legs")
     return len(legs) if isinstance(legs, list) else 0
+
+
+# A configured noise band much wider than the spread the legs themselves show hides a change
+# that repeats. The band stays a policy threshold; the measured spread is reported beside it.
+BAND_WIDER_THAN_MEASURED = 3.0
+
+
+def arm_spread_pct(arm):
+    """(max / min - 1) * 100 over an arm's per-leg throughputs; None below two legs."""
+    values = [leg.get("throughput") for leg in (arm.get("legs") or []) if isinstance(leg, dict)]
+    values = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0]
+    return None if len(values) < 2 else (max(values) / min(values) - 1.0) * 100.0
+
+
+def measured_noise_pct(summary, base):
+    """The larger same-host spread of the candidate legs and the stock legs, if measured."""
+    spreads = [s for s in (arm_spread_pct(summary), arm_spread_pct(base)) if s is not None]
+    return max(spreads) if spreads else None
+
+
+def leg_log(leg):
+    """The serving log of a leg: its `server_log`, else `server.log` beside its receipt."""
+    if not isinstance(leg, dict):
+        return None
+    path = leg.get("server_log")
+    if not path and isinstance(leg.get("provenance"), str):
+        path = os.path.join(os.path.dirname(leg["provenance"]), "server.log")
+    return path if path and os.path.isfile(path) else None
+
+
+def arm_logs(arm):
+    return [p for p in (leg_log(leg) for leg in (arm.get("legs") or [])) if p]
+
+
+def roofline_shares(run_root, params, names):
+    """{task: share of GPU time in percent} from roofline.json, for the tasks named."""
+    path = params.get("roofline") or os.path.join(run_root, "roofline", "out", "roofline.json")
+    if not os.path.isabs(path):
+        path = os.path.join(run_root, path)
+    records = (read_json(path) or {}).get("kernels") or []
+    shares = {}
+    for name in names:
+        own = [r for r in records if isinstance(r, dict) and r.get("task") == name]
+        whole = [r for r in own if r.get("kernel") == name]
+        chosen = whole or [r for r in own if r.get("in_selection")]
+        pcts = {r.get("id") or r.get("kernel"): r.get("pct_gpu_time") for r in chosen}
+        values = [v for v in pcts.values() if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0]
+        shares[name] = round(sum(values), 6) if values and len(values) == len(pcts) else None
+    return shares
+
+
+def amdahl_ceiling(ops, shares):
+    """Per-operator and total end-to-end ceiling, share * (1 - 1/speedup), in percent."""
+    total, complete = 0.0, bool(ops)
+    for op in ops:
+        share, speedup = shares.get(op.get("kernel")), op.get("op_speedup")
+        op["share_pct"] = share
+        if share is None or not isinstance(speedup, (int, float)) or isinstance(speedup, bool):
+            op["ceiling_pct"], complete = None, False
+            continue
+        op["ceiling_pct"] = round(share * (1.0 - 1.0 / speedup), 4) if speedup > 1.0 else 0.0
+        total += op["ceiling_pct"]
+    return round(total, 4) if complete else None
 
 
 def at(doc, path):
@@ -219,6 +303,37 @@ def main(integration=None):
 
     ops = [{"kernel": a.get("kernel"), "op_speedup": a.get("verified_speedup"),
             "target": a.get("target")} for a in (integration or {}).get("applied", [])]
+
+    # What the comparison can and cannot show, reported beside the verdict.
+    findings = []
+    measured = measured_noise_pct(summary, base)
+    band_warning = None
+    if measured is not None and band_pct > BAND_WIDER_THAN_MEASURED * max(measured, 0.1):
+        band_warning = ("the configured noise band of +/-%.2f%% is %.1fx the spread measured "
+                        "between this A/B's own legs (%.2f%%): a change of that size repeats "
+                        "here and is still reported as no_change" % (
+                            band_pct, band_pct / max(measured, 0.1), measured))
+        findings.append(band_warning)
+    ceiling = None
+    if ops:
+        ceiling = amdahl_ceiling(ops, roofline_shares(run_root, params, [o["kernel"] for o in ops]))
+        if ceiling is not None and ceiling < band_pct:
+            findings.append("the installed kernels' Amdahl ceiling is +%.2f%% end to end, below "
+                            "the +/-%.2f%% band: this A/B cannot confirm a gain of that size, so "
+                            "judge the change by its decode-step and server-side metrics" % (
+                                ceiling, band_pct))
+    step_rows = decode_step.compare(arm_logs(base), arm_logs(summary)) if (
+        arm_logs(base) and arm_logs(summary)) else []
+    gate = params.get("max_decode_step_regression_pct")
+    if isinstance(gate, (int, float)) and not isinstance(gate, bool) and gate > 0:
+        slower = decode_step.regressions(step_rows, gate)
+        if slower:
+            worst = max(slower, key=lambda r: r["ratio"])
+            verdict = "regression"
+            findings.append("decode steps got slower at %d batch size(s), worst at batch %d: "
+                            "%.3f ms vs %.3f ms (%+.1f%%), beyond the configured %.1f%% limit" % (
+                                len(slower), worst["batch"], worst["stock_ms"],
+                                worst["candidate_ms"], (worst["ratio"] - 1) * 100, gate))
     ab = {
         "baseline": {"throughput": base_tp, "metric": base_key, "basis": basis_a,
                      "provenance": base.get("provenance")},
@@ -231,6 +346,10 @@ def main(integration=None):
         "verdict": verdict,
         "basis_comparable": True,
         "stock_control": summary.get("stock_control"),
+        "measured_noise_pct": None if measured is None else round(measured, 4),
+        "band_warning": band_warning,
+        "amdahl_ceiling_pct": ceiling,
+        "decode_step_by_batch": step_rows,
     }
     if integration is not None:
         ab.update(overlay_all_shadowed=True, op_level=ops,
@@ -246,7 +365,7 @@ def main(integration=None):
         json.dump(ab, f, indent=1, ensure_ascii=False)
 
     notes = ["The measured system moved %+.4f%% (verdict %s, noise band +/-%.2f%%)."
-             % (delta_pct, verdict, band_pct)]
+             % (delta_pct, verdict, band_pct)] + [f[0].upper() + f[1:] + "." for f in findings]
     metrics = {"baseline_tok_s": base_tp, "candidate_tok_s": cand_tp,
                "e2e_delta_pct": ab["e2e_delta_pct"]}
     if integration is not None:
