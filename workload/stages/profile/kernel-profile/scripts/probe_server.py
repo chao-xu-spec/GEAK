@@ -384,8 +384,12 @@ class Server:
         logp = os.path.join(self.run_dir, "server.%s.log" % mode)
         t0 = time.time()
         log("starting (%s): %s" % (mode, " ".join(cmd)))
+        # The server writes relative-path artifacts into its working directory (sglang's CUDA
+        # graph memory snapshot is cuda_graph_runner_memory_usage.pickle, ~16 MB); keep them
+        # in the run directory, never in the caller's tree.
         self.proc = subprocess.Popen(cmd, env=env, stdout=open(logp, "w"),
-                                     stderr=subprocess.STDOUT, start_new_session=True)
+                                     stderr=subprocess.STDOUT, start_new_session=True,
+                                     cwd=self.run_dir)
         url = base_url(self.cfg)
         while time.time() - t0 < ready_timeout:
             if self.proc.poll() is not None:

@@ -1,7 +1,7 @@
 {
-  "file_count": 29,
+  "file_count": 30,
   "files": {
-    "PROVENANCE.json": "a10e780d3c8f41211c4e0629cff0c619dd324db1b765275c87cebe1cb149dd3c",
+    "PROVENANCE.json": "4d77af349a9e1f163a612d760f23cbfa53d9abf856bf7b1a7b9975e82e9bf783",
     "SKILL.md": "a1a76a48d088eb4e9edbbed18672b8041b2c29fbcb0ba89e1cf3a489da753423",
     "references/capture.md": "e1c7d8d3f2ca541853103ae57c701c13ed7ed7aae1391912a33873279cfbb001",
     "references/dynamic-workloads.md": "52d03f8a82d5c01f24c57db4a71ab323d462a94d23448a8a5283c11fd746eaa0",
@@ -17,7 +17,7 @@
     "scripts/observed_workload.py": "683ccb54a73ea9c5d5ec6769e474692fda7ab0b7439de708f4bed0779bae18b3",
     "scripts/plan_points.py": "d90feb17c53ca4512805abed23073a69ad663c3d3899bf256043c351e8919ab1",
     "scripts/point_census.py": "8d612d600e862983a63a557daa0a0b07fc88a6a8540547c00ce2cd2e6fee0fea",
-    "scripts/probe_server.py": "fbdc9ffcf9d8806ae0722032f68e973aaaa1146d0e521d6919d10f1b3741144a",
+    "scripts/probe_server.py": "8401e580f66add202e23d650b9a7f9b189c9efe812150d5394b464b64db49e9d",
     "scripts/relabel_points.py": "331b4ef2abedab7f7d9f2cb6e03dd5fa0e113434a69d3451a9ad088511de5eea",
     "scripts/run_points.py": "1924157917722e0ccfc2dd74c7cadd9e3dfacb68afda45e735b7eb616cd4baea",
     "scripts/select_targets.py": "2132a0d627086a06ff8739736e10dbdf08deaad3307525f4948e013d33e38b86",
@@ -28,6 +28,7 @@
     "scripts/vllm_observer/sitecustomize.py": "ce05e3321a6250aa203240da4feb2aa81593fdcca9c1dc61f458ca80d20379e0",
     "shared/trace_names.py": "bc52b4535a68f15050cca138b19888a49746a052ebbdf9cb8e285e9181beb19d",
     "tests/test_plan_points_reuse.py": "e883c19bb8adb35f71d4acf7d241791b94f0306d1c81cd8d30fbec2b75558990",
+    "tests/test_probe_server_cwd.py": "5db942ddcc6ddcee14cffd9f7c0213a2cc257f667825dad55a15208537a3e113",
     "tests/test_profile_fast_path.py": "9d7c86135676630466e98382c37e4e784c772da6e081682c0cd1170bd3c6d59a",
     "tests/test_vllm_profile.py": "3cb2f9e62283fca3a6ce45dd26e8e3eea49b740a9fe78f2633395527b19e4cfb"
   },
@@ -36,5 +37,5 @@
   "origin": "AMD-AGI/GEAK refactor/profile-ut-split: profile half of kernel-extract",
   "skill": "kernel-profile",
   "stage": "profile",
-  "tree_sha256": "af5fc3a0244313beac2645a3a1c4df06eceadd855b252a8248c8a6ea115aaafb"
+  "tree_sha256": "dc242090843692fc961cdc6711fc6e7f3fd41bf2913f3dd0d6e35e6cb59232dd"
 }
