@@ -35,6 +35,22 @@ class DecodeStepTest(unittest.TestCase):
                                   line(2, 4.0, 400.0)])
         self.assertEqual(decode_step.step_times(path), {2: [20.0]})
 
+    def test_other_sglang_dialects_are_read(self):
+        path = self.log("d.log", [
+            # no speculative decoding: one token per request per step
+            "[2026-01-01 00:00:00 TP0] Decode batch, #running-req: 4, #token: 900, token usage: 0.01, "
+            "cuda graph: True, gen throughput (token/s): 200.00, #queue-req: 0\n",
+            # attention-context-parallel prefix, hybrid-pool token fields, dotted separator
+            "[2026-01-01 00:00:00 ATTN_CP0 TP0] Decode batch. #running-req: 2, #full token: 10, "
+            "full token usage: 0.00, #swa token: 5, swa token usage: 0.00, accept len: 3.00, "
+            "gen throughput (token/s): 300.00, #queue-req: 0\n",
+            # a numbered batch
+            "[2026-01-01 00:00:00 TP0] Decode batch [12], #running-req: 1, #token: 5, accept len: 2.00, "
+            "gen throughput (token/s): 100.00, #queue-req: 0\n"])
+        steps = decode_step.step_times(path)
+        self.assertEqual({bs: [round(v, 3) for v in vals] for bs, vals in steps.items()},
+                         {4: [20.0], 2: [20.0], 1: [20.0]})
+
     def test_candidate_slower_at_one_batch_size_is_reported_with_its_ratio(self):
         stock = self.log("s.log", [line(1, 4.0, 200.0)] * 40 + [line(4, 4.0, 600.0)] * 40)
         cand = self.log("c.log", [line(1, 4.0, 200.0)] * 40 + [line(4, 4.0, 500.0)] * 40)

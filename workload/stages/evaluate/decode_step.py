@@ -15,7 +15,8 @@ steps that shared their log window with a prefill.
 
     decode_step.py STOCK_LOG[,STOCK_LOG...] CANDIDATE_LOG[,CANDIDATE_LOG...] [--min-samples N]
 
-Only sglang's "Decode batch" lines are understood; other engines yield no rows.
+Only sglang's "Decode batch" lines are understood (with or without speculative decoding;
+only rank TP0's lines are read); other engines yield no rows and the comparison is skipped.
 """
 import argparse
 import json
@@ -23,8 +24,12 @@ import re
 import statistics
 import sys
 
-LINE = re.compile(r"Decode batch, #running-req: (\d+),.*?accept len: ([\d.]+).*?"
-                  r"gen throughput \(token/s\): ([\d.]+)")
+# sglang prints the decode line in several dialects (rank prefixes such as `ATTN_CP0 TP0`,
+# `Decode batch.` or `Decode batch [n],`, `#token` or `#full token`, an `accept len` only under
+# speculative decoding), so each field is looked up on its own instead of matching one layout.
+RUNNING = re.compile(r"Decode batch[^,]*[,.]\s*#running-req: (\d+)")
+ACCEPT = re.compile(r"accept len: ([\d.]+)")
+THROUGHPUT = re.compile(r"gen throughput \(token/s\): ([\d.]+)")
 RANK = re.compile(r"\bTP(\d+)\b")
 MIN_THROUGHPUT = 5.0        # lines logged while the server was idle carry no step time
 MIN_SAMPLES = 30
@@ -40,10 +45,12 @@ def step_times(path, min_throughput=MIN_THROUGHPUT):
             rank = RANK.search(line)
             if rank and int(rank.group(1)) != 0:
                 continue
-            m = LINE.search(line)
-            if not m:
+            m, rate = RUNNING.search(line), THROUGHPUT.search(line)
+            if not m or not rate:
                 continue
-            running, accept, throughput = int(m.group(1)), float(m.group(2)), float(m.group(3))
+            accepted = ACCEPT.search(line)
+            # without speculative decoding every running request advances one token per step
+            running, accept, throughput = int(m.group(1)), float(accepted.group(1)) if accepted else 1.0, float(rate.group(1))
             if throughput < min_throughput or running < 1 or accept <= 0:
                 continue
             steps.setdefault(running, []).append(running * accept / throughput * 1000.0)
