@@ -27,6 +27,9 @@ capture state unknown: preserve logs and inspect owned workers before rearming; 
 necessary runtime recovery to Setup. Choose a bounded follow-up from the installed
 backend's capabilities and the observed failure, rather than repeating an unchanged call.
 Traffic, profiler acknowledgement and process exit do not prove capture success.
+Start the serving and profiling commands from the run directory (`EVAL_DIR`), not from the
+source tree: with CUDA-graph profiling on, sglang writes a ~16 MB
+`cuda_graph_runner_memory_usage.pickle` into the working directory.
 Keep changed-mode diagnostic evidence distinct from deployed timing, and report the
 remaining attribution/coverage gap through the contract.
 
