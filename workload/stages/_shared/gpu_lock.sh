@@ -96,13 +96,8 @@ fi
 # process holds the GPU, i.e. it fails exactly when we need it. Set GEAK_GPU_REQUIRE_IDLE=0 to skip
 # (e.g. deliberately co-tenanted screening runs). The default is 1 on BOTH paths: pool mode steps to
 # another GPU when one is busy, single-GPU mode has nowhere to step and so fails loudly instead.
-_gpu_is_idle() {
-    local id="$1" dev busy vram
-    dev="$(readlink -f "/sys/class/drm/renderD$((128 + 8 * id))/device" 2>/dev/null)" || return 0
-    [ -r "$dev/gpu_busy_percent" ] || return 0   # cannot tell -> do not block the run
-    busy="$(cat "$dev/gpu_busy_percent" 2>/dev/null || echo 0)"
-    vram="$(( $(cat "$dev/mem_info_vram_used" 2>/dev/null || echo 0) / 1048576 ))"
-    [ "${busy:-0}" -le "${GEAK_GPU_MAX_BUSY_PCT:-5}" ] && [ "$vram" -le "${GEAK_GPU_MAX_VRAM_MB:-1024}" ]
+_gpu_is_idle() {   # one implementation, shared with the optimize scheduler and worker
+    python3 "$(dirname "$SOURCE_GUARD")/gpu_idle.py" "$1" >/dev/null
 }
 
 _lock_paths=()

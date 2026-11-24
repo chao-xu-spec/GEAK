@@ -37,7 +37,9 @@ from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.join(HERE, "worker.sh")
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "..", "stages", "_shared"))   # the stage contract's tools
 from durable_write import read_credit_pair
+import gpu_idle
 
 
 def parse_overrides(spec):
@@ -577,6 +579,18 @@ def tick(args, backend, tasks, assign, bad):
     free = [g for g in args.gpus
             if g not in held and bad.get(g, 0) < args.bad_node_limit]
 
+    # A GPU another tenant is using cannot give a task a measurement worth keeping. Leave
+    # exactly those GPUs out of this tick, keep the others, and look again on the next tick.
+    if not getattr(args, "allow_busy_gpus", False):
+        contended = gpu_idle.foreign_use(free, render_paths=getattr(backend, "render_paths", None))
+        logged = args.__dict__.setdefault("contended_logged", {})
+        now_busy = {r["gpu"]: gpu_idle.describe([r]) for r in contended}
+        for g, reason in now_busy.items():
+            if logged.get(g) != reason:
+                log(args.work_root, "not dispatching to gpu%d: %s" % (g, reason))
+        args.contended_logged = now_busy
+        free = [g for g in free if g not in now_busy]
+
     for kernel in list(pending):
         if not free:
             break
@@ -589,6 +603,7 @@ def tick(args, backend, tasks, assign, bad):
         label = slot_label(gpus)
         env = dict(args.worker_env)
         env["TASK_DIR"] = os.path.join(args.tasks_dir, kernel)
+        env["GEAK_PHYSICAL_GPUS"] = ",".join(str(g) for g in gpus)
         if kernel in args.keep_overrides:
             env["KEEP_THRESHOLD"] = str(args.keep_overrides[kernel])
         ok = backend.start(kernel, gpus, env)
@@ -691,6 +706,9 @@ def main():
     ap.add_argument("--startup-grace", type=int, default=300)
     ap.add_argument("--bad-node-limit", type=int, default=2)
     ap.add_argument("--tick-sec", type=int, default=30)
+    ap.add_argument("--allow-busy-gpus", action="store_true",
+                    help="dispatch to a GPU even when another tenant is using it (the check "
+                         "reads the driver's busy/VRAM counters, see stages/_shared/gpu_idle.py)")
     ap.add_argument("--max-wall-sec", type=int, default=0,
                     help="wall-clock ceiling for the scheduler itself; 0 = unlimited")
     args = ap.parse_args()

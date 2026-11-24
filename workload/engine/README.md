@@ -13,6 +13,7 @@ The [sequential driver](core/README.md) is an optional executor with a narrower 
 | `core/report.py` | CLI and watch: render stage results; preserve driver/native rejection | Driver layout, including legacy applyback summary |
 | `core/watch.py` | Driver: local process/resource monitoring and report files | Does not deliver chat updates |
 | `campaign/scheduler.py` | Optimize: task queue, declared GPU widths and worker recovery | Kernel campaign; Docker isolation or local CPU smoke |
+| `../stages/_shared/gpu_idle.py` | Scheduler, worker and `gpu_lock.sh`: is another tenant using these GPUs (driver busy/VRAM counters) | sysfs `/sys/class/drm` |
 | `campaign/worker.sh` | Scheduler: attempts, credit, KEEP/revert and measurement hooks | Qualified kernel task protocol |
 | `campaign/container_runtime.py` | Scheduler: configured runtime preparation and container arguments | Docker |
 | `campaign/durable_write.py` | Scheduler/worker: atomic state writes and credit recovery | File-based state |
